@@ -1,30 +1,28 @@
 package org.example;
 
-import org.apache.kafka.clients.admin.AdminClient;
-import org.apache.kafka.clients.admin.AdminClientConfig;
-import org.apache.kafka.clients.admin.NewTopic;
-import org.apache.kafka.clients.consumer.Consumer;
-import org.apache.kafka.clients.consumer.ConsumerConfig;
-import org.apache.kafka.clients.consumer.ConsumerRecords;
-import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.clients.consumer.*;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.Producer;
 import org.apache.kafka.clients.producer.ProducerRecord;
+import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.serialization.StringDeserializer;
+import org.example.chatroom.KafkaConnectionDetails;
 
 import java.time.Duration;
+import java.time.temporal.ChronoUnit;
 import java.util.Collections;
-import java.util.LinkedList;
 import java.util.Properties;
-import java.util.Queue;
-import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 public class User {
 
     String name;
-//    Queue<String> cache = new LinkedList<>();
     Producer<String, String> producer;
     Consumer<String, String> consumer;
+    String currentChatRoom;
+    ExecutorService executorService = Executors.newSingleThreadExecutor();
 
     public User(String name) {
         this.name = name;
@@ -32,29 +30,44 @@ public class User {
         createConsumer();
     }
 
-    public void createChatroom(String chatroomName) {
-        Properties props = new Properties();
-        props.put(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, KafkaConnectionDetails.BOOTSTRAP_SERVERS);
+    public String getCurrentChatRoom() {
+        return currentChatRoom;
+    }
 
-        try (AdminClient adminClient = AdminClient.create(props)) {
-            NewTopic newTopic = new NewTopic(chatroomName, 6, (short) 1);
-            newTopic.configs(Collections.singletonMap("retention.ms", "86400000"));
-            adminClient.createTopics(Collections.singleton(newTopic)).all().get();
-            System.out.println("Topic " + chatroomName + " created successfully.");
-        } catch (InterruptedException | ExecutionException e) {
-            throw new ChatroomCreateException("Unable to crate chatroom", e);
+    public void joinChatRoom(String chatRoom) {
+        try {
+            currentChatRoom = chatRoom;
+            consumer.unsubscribe();
+            consumer.subscribe(Collections.singletonList(currentChatRoom));
+            executorService.awaitTermination(10, TimeUnit.SECONDS);
+            executorService.submit(() -> readNewMessages(currentChatRoom));
+            System.out.println("Joined " + chatRoom);
+        } catch (RuntimeException | InterruptedException e) {
+            System.out.println("Cannot subscribe to chatroom: " + e.getMessage());
         }
+
     }
 
-    public void sendMessage(String chatroom, String message) {
-        ProducerRecord<String, String> kafkaRecord = new ProducerRecord<>(chatroom, String.valueOf(message.length()), message);
+    public void sendMessage(String message) {
+        ProducerRecord<String, String> kafkaRecord = new ProducerRecord<>(
+                currentChatRoom,
+                String.valueOf(currentChatRoom.hashCode()), name + ": " + message);
         producer.send(kafkaRecord);
+        System.out.println("sent " + message);
     }
 
-    public void readNewMessages(String chatroom) {
-        consumer.subscribe(Collections.singletonList(chatroom));
-        ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(100));
-        records.forEach(kafkaRecord -> System.out.println("Received message: " + kafkaRecord.value()));
+    private void readNewMessages(String chatRoom) {
+        for(TopicPartition topicPartition: consumer.assignment()) {
+            System.out.println(consumer.position(topicPartition));
+            consumer.seek(topicPartition, 0);
+        }
+        while (chatRoom.equalsIgnoreCase(currentChatRoom)) {
+            ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(100));
+            records.forEach(kafkaRecord ->
+                    System.out.println(kafkaRecord.topic() + ": " + kafkaRecord.value()));
+            consumer.commitSync();
+        }
+        System.out.println("reading loop closed.");
     }
 
     public void logOut() {
@@ -73,6 +86,7 @@ public class User {
         Properties props = new Properties();
         props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, KafkaConnectionDetails.BOOTSTRAP_SERVERS);
         props.put(ConsumerConfig.GROUP_ID_CONFIG, name);
+        props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "false");
         props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
         props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
         consumer = new KafkaConsumer<>(props);
