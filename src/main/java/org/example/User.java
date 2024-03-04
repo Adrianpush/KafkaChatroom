@@ -10,6 +10,8 @@ import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.example.chatroom.KafkaConnectionDetails;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
 import java.util.List;
@@ -20,11 +22,12 @@ import java.util.concurrent.Executors;
 public class User {
 
     String name;
+    String currentChatRoom;
     Producer<String, String> producer;
     Consumer<String, String> consumer;
     TopicPartition topicPartition;
-    String currentChatRoom;
     ExecutorService printService;
+    Logger logger = LoggerFactory.getLogger(User.class);
 
     public User(String name) {
         this.name = name;
@@ -40,9 +43,9 @@ public class User {
             consumer.assign(List.of(topicPartition));
             if (fromStart) resetOffset();
             printService.submit(this::readNewMessages);
-            System.out.println("Joined " + chatRoom);
+            logger.info("Joined %s".formatted(chatRoom));
         } catch (RuntimeException e) {
-            System.out.println("Cannot subscribe to chatroom: " + e.getMessage());
+            logger.warn("Cannot subscribe to chatroom: %s".formatted(e.getMessage()));
         }
     }
 
@@ -55,7 +58,7 @@ public class User {
         while (currentChatRoom != null) {
             ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(100));
             records.forEach(kafkaRecord ->
-                    System.out.println(kafkaRecord.topic() + " - " + kafkaRecord.key() + ": " + kafkaRecord.value()));
+                    logger.info(kafkaRecord.topic() + " - " + kafkaRecord.key() + ": " + kafkaRecord.value()));
             consumer.commitSync();
         }
     }
@@ -67,7 +70,7 @@ public class User {
 
     public void leaveChatRoom() {
         currentChatRoom = null;
-        System.out.println("Left chatroom");
+        logger.info("Left chatroom");
     }
 
     public void logOut() {

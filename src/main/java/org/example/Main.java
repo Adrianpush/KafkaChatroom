@@ -1,6 +1,7 @@
 package org.example;
 
-import org.example.chatroom.ChatRoomManager;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.Arrays;
 import java.util.Scanner;
@@ -8,16 +9,13 @@ import java.util.stream.Collectors;
 
 public class Main {
 
+    private static final Scanner scanner = new Scanner(System.in);
+    private static final Logger logger = LoggerFactory.getLogger(Main.class);
     private static User user;
-    private static Scanner scanner = new Scanner(System.in);
 
     public static void main(String[] args) {
-        ChatRoomManager chatRoomManager = ChatRoomManager.getInstance();
-
-        // chatRoomManager.createChatroom("Evening");
-        // chatRoomManager.createChatroom("Morning");
         while (readInput()) {
-            System.out.println("Enter command: ");
+            logger.info("Enter command: ");
         }
     }
 
@@ -47,7 +45,7 @@ public class Main {
                 user.joinChatRoom(userWords[1], true);
                 break;
             default:
-                System.out.println("Invalid input");
+                logger.warn("Invalid input");
         }
 
         return true;
