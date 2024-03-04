@@ -1,6 +1,9 @@
 package org.example;
 
-import org.apache.kafka.clients.consumer.*;
+import org.apache.kafka.clients.consumer.Consumer;
+import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.kafka.clients.consumer.ConsumerRecords;
+import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.Producer;
 import org.apache.kafka.clients.producer.ProducerRecord;
@@ -9,65 +12,62 @@ import org.apache.kafka.common.serialization.StringDeserializer;
 import org.example.chatroom.KafkaConnectionDetails;
 
 import java.time.Duration;
-import java.time.temporal.ChronoUnit;
-import java.util.Collections;
+import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 
 public class User {
 
     String name;
     Producer<String, String> producer;
     Consumer<String, String> consumer;
+    TopicPartition topicPartition;
     String currentChatRoom;
-    ExecutorService executorService = Executors.newSingleThreadExecutor();
+    ExecutorService printService;
 
     public User(String name) {
         this.name = name;
+        this.printService = Executors.newSingleThreadExecutor();
         createProducer();
         createConsumer();
     }
 
-    public String getCurrentChatRoom() {
-        return currentChatRoom;
-    }
-
-    public void joinChatRoom(String chatRoom) {
+    public void joinChatRoom(String chatRoom, boolean fromStart) {
         try {
+            topicPartition = new TopicPartition(chatRoom, 0);
             currentChatRoom = chatRoom;
-            consumer.unsubscribe();
-            consumer.subscribe(Collections.singletonList(currentChatRoom));
-            executorService.awaitTermination(10, TimeUnit.SECONDS);
-            executorService.submit(() -> readNewMessages(currentChatRoom));
+            consumer.assign(List.of(topicPartition));
+            if (fromStart) resetOffset();
+            printService.submit(this::readNewMessages);
             System.out.println("Joined " + chatRoom);
-        } catch (RuntimeException | InterruptedException e) {
+        } catch (RuntimeException e) {
             System.out.println("Cannot subscribe to chatroom: " + e.getMessage());
         }
-
     }
 
     public void sendMessage(String message) {
-        ProducerRecord<String, String> kafkaRecord = new ProducerRecord<>(
-                currentChatRoom,
-                String.valueOf(currentChatRoom.hashCode()), name + ": " + message);
+        ProducerRecord<String, String> kafkaRecord = new ProducerRecord<>(currentChatRoom, name, message);
         producer.send(kafkaRecord);
-        System.out.println("sent " + message);
     }
 
-    private void readNewMessages(String chatRoom) {
-        for(TopicPartition topicPartition: consumer.assignment()) {
-            System.out.println(consumer.position(topicPartition));
-            consumer.seek(topicPartition, 0);
-        }
-        while (chatRoom.equalsIgnoreCase(currentChatRoom)) {
+    private void readNewMessages() {
+        while (currentChatRoom != null) {
             ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(100));
             records.forEach(kafkaRecord ->
-                    System.out.println(kafkaRecord.topic() + ": " + kafkaRecord.value()));
+                    System.out.println(kafkaRecord.topic() + " - " + kafkaRecord.key() + ": " + kafkaRecord.value()));
             consumer.commitSync();
         }
-        System.out.println("reading loop closed.");
+    }
+
+    private void resetOffset() {
+        consumer.seek(topicPartition, 0);
+        consumer.commitSync();
+    }
+
+    public void leaveChatRoom() {
+        currentChatRoom = null;
+        System.out.println("Left chatroom");
     }
 
     public void logOut() {
@@ -93,6 +93,8 @@ public class User {
     }
 
     private void close() {
+        leaveChatRoom();
+        printService.shutdown();
         producer.close();
         consumer.close();
     }
