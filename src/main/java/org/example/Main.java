@@ -1,7 +1,6 @@
 package org.example;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.example.chatroom.ChatRoomManager;
 
 import java.util.Arrays;
 import java.util.Scanner;
@@ -10,17 +9,23 @@ import java.util.stream.Collectors;
 public class Main {
 
     private static final Scanner scanner = new Scanner(System.in);
-    private static final Logger logger = LoggerFactory.getLogger(Main.class);
     private static User user;
 
     public static void main(String[] args) {
+//        ChatRoomManager chatRoomManager = ChatRoomManager.getInstance();
+//        if(chatRoomManager.getChatRoomsNames().isEmpty()) {
+//            chatRoomManager.createChatroom("A");
+//            chatRoomManager.createChatroom("B");
+//            chatRoomManager.createChatroom("C");
+//        }
         while (readInput()) {
-            logger.info("Enter command: ");
+            System.out.println("Enter command: ");
         }
+        ChatRoomManager chatRoomManager = ChatRoomManager.getInstance();
+        chatRoomManager.createStream("A");
     }
 
     private static boolean readInput() {
-
         String userInput = scanner.nextLine();
         String[] userWords = userInput.split(" ");
         String command = userWords[0];
@@ -36,7 +41,7 @@ public class Main {
                 user = new User(userWords[1]);
                 break;
             case "send":
-                user.sendMessage(Arrays.stream(userWords).skip(1).collect(Collectors.joining(" ", "", "e")));
+                user.sendMessage(Arrays.stream(userWords).skip(1).collect(Collectors.joining(" ", "", " ")));
                 break;
             case "join":
                 user.joinChatRoom(userWords[1], false);
@@ -45,9 +50,8 @@ public class Main {
                 user.joinChatRoom(userWords[1], true);
                 break;
             default:
-                logger.warn("Invalid input");
+                System.out.println("Invalid input");
         }
-
         return true;
     }
 }
