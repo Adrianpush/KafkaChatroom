@@ -15,12 +15,12 @@ import java.util.concurrent.TimeUnit;
 
 public class User {
 
-    String username;
-    String currentChatRoom;
-    Producer<String, String> producer;
-    Consumer<String, String> consumer;
-    TopicPartition topicPartition;
-    ExecutorService printService;
+    private final String username;
+    private final Producer<String, String> producer;
+    private final Consumer<String, String> consumer;
+    private final ExecutorService printService;
+    private String currentChatRoom;
+    private TopicPartition topicPartition;
 
     public User(String username) {
         this.username = username;
@@ -30,24 +30,29 @@ public class User {
     }
 
     public void joinChatRoom(String chatRoom, boolean fromStart) {
-        try {
-            topicPartition = new TopicPartition(chatRoom, 0);
-            currentChatRoom = chatRoom;
-            consumer.assign(List.of(topicPartition));
-            if (fromStart) {
-                resetOffset();
-                System.out.println(consumer.position(topicPartition));
+        if (ChatRoomManager.getInstance().isTopicCreated(chatRoom)) {
+            try {
+                topicPartition = new TopicPartition(chatRoom, 0);
+                currentChatRoom = chatRoom;
+                consumer.assign(List.of(topicPartition));
+                if (fromStart) resetOffset();
+                printService.submit(this::readNewMessages);
+                System.out.println("Joined %s".formatted(chatRoom));
+            } catch (RuntimeException e) {
+                System.out.println("Cannot subscribe to chatroom: %s".formatted(e.getMessage()));
             }
-            printService.submit(this::readNewMessages);
-            System.out.println("Joined %s".formatted(chatRoom));
-        } catch (RuntimeException e) {
-            System.out.println("Cannot subscribe to chatroom: %s".formatted(e.getMessage()));
+        } else {
+            System.out.println("Invalid chatroom name.");
         }
     }
 
     public void sendMessage(String message) {
-        ProducerRecord<String, String> kafkaRecord = new ProducerRecord<>(currentChatRoom, username, message);
-        producer.send(kafkaRecord);
+        if (currentChatRoom == null) {
+            System.out.println("Must join chatroom before sending messages.");
+        } else {
+            ProducerRecord<String, String> kafkaRecord = new ProducerRecord<>(currentChatRoom, username, message);
+            producer.send(kafkaRecord);
+        }
     }
 
     private void readNewMessages() {
@@ -61,7 +66,6 @@ public class User {
 
     public void leaveChatRoom() {
         currentChatRoom = null;
-        System.out.println("Left chatroom");
     }
 
     public void logOut() {
