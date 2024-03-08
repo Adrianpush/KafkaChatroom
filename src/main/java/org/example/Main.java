@@ -17,8 +17,8 @@ public class Main {
 //            chatRoomManager.createChatroom("C");
 //        }
 
-        boolean flag = true;
         printInstructions();
+        boolean flag = true;
         while (flag) {
             flag = readInput();
         }

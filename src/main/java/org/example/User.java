@@ -37,9 +37,9 @@ public class User {
                 consumer.assign(List.of(topicPartition));
                 if (fromStart) resetOffset();
                 printService.submit(this::readNewMessages);
-                System.out.println("Joined %s".formatted(chatRoom));
+                System.out.printf("Joined %s%n", chatRoom);
             } catch (RuntimeException e) {
-                System.out.println("Cannot subscribe to chatroom: %s".formatted(e.getMessage()));
+                System.out.printf("Cannot subscribe to chatroom: %s%n", e.getMessage());
             }
         } else {
             System.out.println("Invalid chatroom name.");
